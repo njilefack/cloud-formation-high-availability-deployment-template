@@ -1,0 +1,54 @@
+[
+{
+    "ParameterKey": "VpcCIDR",
+    "ParameterValue": "10.0.0.0/16"
+},
+    {
+        "ParameterKey": "EnvironmentName",
+        "ParameterValue": "HA-Deployment"
+    },
+    {
+        "ParameterKey": "PUBNET1CIDR",
+        "ParameterValue": "10.1.10.0/24"
+    },
+    {
+        "ParameterKey": "PUBNET2CIDR",
+        "ParameterValue": "10.1.20.0/24"
+    },
+    {
+        "ParameterKey": "PRIVNET1CIDR",
+        "ParameterValue": "10.1.40.0/24"
+    },
+    {
+        "ParameterKey": "PRIVNET2CIDR",
+        "ParameterValue": "10.1.50.0/24"
+    },
+    {
+        "ParameterKey": "AMIId",
+        "ParameterValue": "ami-0ac73f33a1888c64a"
+    },
+    {
+        "ParameterKey": "InstanceType",
+        "ParameterValue": "t3.small"
+    },
+    {
+        "ParameterKey": "DiskSize",
+        "ParameterValue": "10"
+    },
+    {
+        "ParameterKey": "DiskMountPath",
+        "ParameterValue": "/dev/sdk"
+    },
+    {
+        "ParameterKey": "InstanceIAMProfile",
+        "ParameterValue": "UdacityS3ReadOnlyEC2"
+    },
+    {
+        "ParameterKey": "SSHKeyName",
+        "ParameterValue": "ha-deployment"
+    },
+    {
+        "ParameterKey": "SSHKeyNameBH",
+        "ParameterValue": "bastionhostkey"
+    }
+]

@@ -1,0 +1,456 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+# This CloudFormation template will deploy a high availability web application
+
+Parameters:
+  EnvironmentName: 
+    Description: An environment name that will be prefixed to the name of the resources we create
+    Type: String
+
+  VpcCIDR: 
+    Description: Please enter the IP range (CIDR notation) for this VPC
+    Type: String
+    Default: 10.0.0.0/16
+    
+  PUBNET1CIDR: 
+    Description: Local IP address block dedicated to public subnet 1
+    Type: String
+    Default: 10.1.10.0/24
+
+  PUBNET2CIDR: 
+    Description: Local IP address block dedicated to public subnet 2
+    Type: String
+    Default: 10.1.20.0/24
+
+  PRIVNET1CIDR: 
+    Description: Local IP address block dedicated to private subnet 1
+    Type: String
+    Default: 10.1.40.0/24
+
+  PRIVNET2CIDR: 
+    Description: Local IP address block dedicated to private subnet 2
+    Type: String
+    Default: 10.1.50.0/24
+  
+  AMIId: 
+    Description: AmiId which will be used to provision bastion host and application servers instances
+    Type: String
+    
+  InstanceType: 
+    Description: The type of instance to be provisioned to host the web server
+    Type: String
+
+  DiskSize: 
+    Description: Size of drive for the created instance(s)
+    Type: String
+
+  DiskMountPath: 
+    Description: Path where the disk or volume will be mounted
+    Type: String
+  
+  InstanceIAMProfile: 
+    Description: IAM profile containing roles with permissions necessary for instances to access other cloud resources
+    Type: String
+
+  SSHKeyName: 
+    Description: Name of SSH Key for logging into the application servers instances
+    Type: String
+
+  SSHKeyNameBH: 
+    Description: Name of SSH Key for logging into the bastion host instance
+    Type: String
+
+Resources:
+# VPC
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.1.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+      - Key: Name
+        Value: !Sub ${EnvironmentName}-VPC
+
+# Internet Gateway
+  InternetGateway:
+        Type: AWS::EC2::InternetGateway
+        Properties:
+            Tags:
+                - Key: Name
+                  Value: !Ref EnvironmentName
+
+# Internet gateway attachment        
+  InternetGatewayAttachment:
+        Type: AWS::EC2::VPCGatewayAttachment
+        Properties:
+            InternetGatewayId: !Ref InternetGateway
+            VpcId: !Ref VPC
+
+# Public subnets 1 & 2
+  PUBNET1: 
+       Type: AWS::EC2::Subnet
+       Properties:
+          VpcId: !Ref VPC
+          AvailabilityZone: !Select [ 0, !GetAZs '' ]
+          CidrBlock: !Ref PUBNET1CIDR
+          MapPublicIpOnLaunch: true
+          Tags: 
+              - Key: Name 
+                Value: !Sub ${EnvironmentName} Public Subnet (AZ1)s
+  
+  PUBNET2: 
+      Type: AWS::EC2::Subnet
+      Properties:
+          VpcId: !Ref VPC
+          AvailabilityZone: !Select [ 1, !GetAZs '' ]
+          CidrBlock: !Ref PUBNET2CIDR
+          MapPublicIpOnLaunch: true
+          Tags: 
+              - Key: Name 
+                Value: !Sub ${EnvironmentName} Public Subnet (AZ2)
+
+# Private subnets 1 & 2
+  PRIVNET1: 
+       Type: AWS::EC2::Subnet
+       Properties:
+          VpcId: !Ref VPC
+          AvailabilityZone: !Select [ 0, !GetAZs '' ]
+          CidrBlock: !Ref PRIVNET1CIDR
+          MapPublicIpOnLaunch: true
+          Tags: 
+              - Key: Name 
+                Value: !Sub ${EnvironmentName} Private Subnet (AZ1)
+
+  PRIVNET2: 
+      Type: AWS::EC2::Subnet
+      Properties:
+          VpcId: !Ref VPC
+          AvailabilityZone: !Select [ 1, !GetAZs '' ]
+          CidrBlock: !Ref PRIVNET2CIDR
+          MapPublicIpOnLaunch: true
+          Tags: 
+              - Key: Name 
+                Value: !Sub ${EnvironmentName} Private Subnet (AZ2)
+
+# Elastic IP addresses for Natgateways in public subnets 1 & 2
+  NatGateway1EIP:
+        Type: AWS::EC2::EIP
+        DependsOn: InternetGatewayAttachment
+        Properties: 
+            Domain: vpc
+
+  NatGateway2EIP:
+        Type: AWS::EC2::EIP
+        DependsOn: InternetGatewayAttachment
+        Properties:
+            Domain: vpc
+
+# Natgateways in public subnets 1 & 2
+  ungw1: 
+        Type: AWS::EC2::NatGateway
+        Properties: 
+            AllocationId: !GetAtt NatGateway1EIP.AllocationId
+            SubnetId: !Ref PUBNET1
+
+  ungw2: 
+        Type: AWS::EC2::NatGateway
+        Properties:
+            AllocationId: !GetAtt NatGateway2EIP.AllocationId
+            SubnetId: !Ref PUBNET2
+
+# Public route tables and subnets associations for public routes
+  upublicrt1:
+        Type: AWS::EC2::RouteTable
+        Properties: 
+            VpcId: !Ref VPC
+            Tags: 
+                - Key: Name 
+                  Value: !Sub ${EnvironmentName} Public Routes
+
+  Defaultupublicroute1: 
+        Type: AWS::EC2::Route
+        DependsOn: InternetGatewayAttachment
+        Properties: 
+            RouteTableId: !Ref upublicrt1
+            DestinationCidrBlock: 0.0.0.0/0
+            GatewayId: !Ref InternetGateway
+
+  upublicrt2:
+        Type: AWS::EC2::RouteTable
+        Properties: 
+            VpcId: !Ref VPC
+            Tags: 
+                - Key: Name 
+                  Value: !Sub ${EnvironmentName} Public Routes
+
+  Defaultupublicroute2: 
+        Type: AWS::EC2::Route
+        DependsOn: InternetGatewayAttachment
+        Properties: 
+            RouteTableId: !Ref upublicrt2
+            DestinationCidrBlock: 0.0.0.0/0
+            GatewayId: !Ref InternetGateway
+
+  PUBNET1RouteTableAssociation:
+        Type: AWS::EC2::SubnetRouteTableAssociation
+        Properties:
+            RouteTableId: !Ref upublicrt1
+            SubnetId: !Ref PUBNET1
+
+  PUBNET2RouteTableAssociation:
+        Type: AWS::EC2::SubnetRouteTableAssociation
+        Properties:
+            RouteTableId: !Ref upublicrt2
+            SubnetId: !Ref PUBNET2
+
+# Private route tables and subnets associations for public routes
+  uprivatert1:
+        Type: AWS::EC2::RouteTable
+        Properties: 
+            VpcId: !Ref VPC
+            Tags: 
+                - Key: Name 
+                  Value: !Sub ${EnvironmentName} Private Routes (AZ1)
+
+  DefaultuprivateRoute1:
+        Type: AWS::EC2::Route
+        Properties:
+            RouteTableId: !Ref uprivatert1
+            DestinationCidrBlock: 0.0.0.0/0
+            NatGatewayId: !Ref ungw1
+
+  PRIVNET1RouteTableAssociation:
+        Type: AWS::EC2::SubnetRouteTableAssociation
+        Properties:
+            RouteTableId: !Ref uprivatert1
+            SubnetId: !Ref PRIVNET1
+
+  uprivatert2:
+        Type: AWS::EC2::RouteTable
+        Properties: 
+            VpcId: !Ref VPC
+            Tags: 
+                - Key: Name 
+                  Value: !Sub ${EnvironmentName} Private Routes (AZ2)
+
+  DefaultPrivateRoute2:
+        Type: AWS::EC2::Route
+        Properties:
+            RouteTableId: !Ref uprivatert2
+            DestinationCidrBlock: 0.0.0.0/0
+            NatGatewayId: !Ref ungw2
+
+  PRIVNET2RouteTableAssociation:
+        Type: AWS::EC2::SubnetRouteTableAssociation
+        Properties:
+            RouteTableId: !Ref uprivatert2
+            SubnetId: !Ref PRIVNET2
+
+# Setting up a bastion
+  BastionInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AMIId
+      InstanceType: !Ref InstanceType
+      SubnetId: !Ref PUBNET1
+      SecurityGroupIds:
+        - !Ref BastionSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-BastionInstance'
+      KeyName: !Ref SSHKeyNameBH
+
+  BastionEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      InstanceId: !Ref BastionInstance
+    DependsOn: BastionInstance
+
+  BastionSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription:
+        !Sub 'Security group for ${EnvironmentName} bastion host'
+      VpcId: !Ref VPC
+
+  BastionAllowInboundSSHFromInternet:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref BastionSecurityGroup
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      CidrIp: 0.0.0.0/0
+
+  BastionAllowOutboundSSHToApplication:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref BastionSecurityGroup
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      DestinationSecurityGroupId: !Ref ApplicationSecurityGroup
+
+# Web servers security group
+  ApplicationSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription:
+        !Sub 'Internal Security group for ${EnvironmentName}'
+      VpcId: !Ref VPC
+
+  ApplicationAllowInboundSSHFromBastion:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref ApplicationSecurityGroup
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      SourceSecurityGroupId: !Ref BastionSecurityGroup
+
+  ApplicationAllowHTTPFromLBSSecurityGroup:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref ApplicationSecurityGroup
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      SourceSecurityGroupId: !Ref LBSecurityGroup
+
+  ApplicationAllowOutboundHTTPToTheWorld:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref ApplicationSecurityGroup
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      CidrIp: 0.0.0.0/0
+
+  ApplicationAllowOutboundHTTPSToTheWorld:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref ApplicationSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      CidrIp: 0.0.0.0/0
+
+# Application load balancer security group
+  LBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription:
+        !Sub 'Security group for LB'
+      VpcId: !Ref VPC
+
+  LBAllowHTTPInboundFromWorld:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref LBSecurityGroup
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      CidrIp: 0.0.0.0/0
+
+  LBAllowHTTPOutbound:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref LBSecurityGroup
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      CidrIp: 0.0.0.0/0
+
+# Launch configuration
+  AppLicationLaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            sudo apt-get update -y
+            sudo apt-get install unzip awscli -y
+            sudo apt-get install apache2 -y
+            sudo systemctl start apache2.service
+            cd /var/www/html
+            sudo aws s3 cp s3://udacity-demo-jilefack/index.html .
+
+      ImageId: !Ref AMIId
+      IamInstanceProfile: !Ref InstanceIAMProfile
+      SecurityGroups:
+      - Ref: ApplicationSecurityGroup
+      InstanceType: !Ref InstanceType
+      BlockDeviceMappings:
+      - DeviceName: !Ref DiskMountPath
+        Ebs:
+          VolumeSize: !Ref DiskSize
+      KeyName: !Ref SSHKeyName
+  
+  ApplicationGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AvailabilityZones:
+        - !Select [ 0, !GetAZs ]
+        - !Select [ 1, !GetAZs ]
+      LaunchConfigurationName:
+        Ref: AppLicationLaunchConfig
+      MinSize: '4'
+      MaxSize: '4'
+      VPCZoneIdentifier:
+        - Ref: PRIVNET1
+        - Ref: PRIVNET2
+      TargetGroupARNs:
+        - Ref: TargetGroup
+
+# LoadBalancer
+  LoadBalancer:
+    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+    Properties:
+      Subnets:
+        - !Ref PUBNET1
+        - !Ref PUBNET2
+      SecurityGroups:
+        - Ref: LBSecurityGroup
+  TargetGroup:
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+    Properties:
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckPort: 80
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 8
+      HealthyThresholdCount: 2
+      Port: 80
+      Protocol: HTTP
+      VpcId: !Ref VPC
+  ListenerRule:
+    Type: 'AWS::ElasticLoadBalancingV2::ListenerRule'
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+      Conditions:
+        - Field: path-pattern
+          Values: [/]
+      ListenerArn: !Ref Listener
+      Priority: 1
+  Listener:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: '80'
+      Protocol: HTTP
+
+# outputs
+Outputs:
+  LBURL:
+    Description: 'Load Balancer URL'
+    Value: !Sub 'http://${LoadBalancer.DNSName}'
+    Export:
+      Name: LBURL
