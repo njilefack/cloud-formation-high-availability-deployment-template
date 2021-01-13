@@ -42,13 +42,5 @@
     {
         "ParameterKey": "InstanceIAMProfile",
         "ParameterValue": "UdacityS3ReadOnlyEC2"
-    },
-    {
-        "ParameterKey": "SSHKeyName",
-        "ParameterValue": "ha-deployment"
-    },
-    {
-        "ParameterKey": "SSHKeyNameBH",
-        "ParameterValue": "bastionhostkey"
     }
 ]

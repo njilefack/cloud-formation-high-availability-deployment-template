@@ -52,14 +52,6 @@ Parameters:
     Description: IAM profile containing roles with permissions necessary for instances to access other cloud resources
     Type: String
 
-  SSHKeyName: 
-    Description: Name of SSH Key for logging into the application servers instances
-    Type: String
-
-  SSHKeyNameBH: 
-    Description: Name of SSH Key for logging into the bastion host instance
-    Type: String
-
 Resources:
 # VPC
   VPC:
@@ -259,7 +251,6 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${EnvironmentName}-BastionInstance'
-      KeyName: !Ref SSHKeyNameBH
 
   BastionEIP:
     Type: AWS::EC2::EIP
@@ -386,7 +377,6 @@ Resources:
       - DeviceName: !Ref DiskMountPath
         Ebs:
           VolumeSize: !Ref DiskSize
-      KeyName: !Ref SSHKeyName
   
   ApplicationGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
